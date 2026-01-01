@@ -180,3 +180,17 @@ Generates:
 - Suggested agent skills with structured YAML frontmatter
 
 </details>
+
+<details>
+<summary><strong>Show me the prompts!</strong></summary>
+
+All LLM prompts used in this tool:
+
+| Purpose | File |
+|---------|------|
+| Reverse-engineer task from PR diff | [`agent_runner.py#L58`](https://github.com/sshh12/agent-pr-replay/blob/36d26f6818400a221bab135015e3bc1f670d91fa/src/agent_pr_replay/agent_runner.py#L58) |
+| Select representative PRs | [`pr_selector.py#L100`](https://github.com/sshh12/agent-pr-replay/blob/36d26f6818400a221bab135015e3bc1f670d91fa/src/agent_pr_replay/pr_selector.py#L100) |
+| Compare Claude vs human diffs | [`diff_comparison.py#L301`](https://github.com/sshh12/agent-pr-replay/blob/36d26f6818400a221bab135015e3bc1f670d91fa/src/agent_pr_replay/diff_comparison.py#L301) |
+| Synthesize final report | [`analyzer.py#L13`](https://github.com/sshh12/agent-pr-replay/blob/36d26f6818400a221bab135015e3bc1f670d91fa/src/agent_pr_replay/analyzer.py#L13) |
+
+</details>
