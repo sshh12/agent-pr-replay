@@ -48,7 +48,7 @@ flowchart TB
 - [GitHub CLI](https://cli.github.com/) (`gh`), authenticated via `gh auth login`
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`), installed and authenticated
 
-> **Warning**: This tool uses the Claude API and may incur costs. It runs code in git worktrees. Only use with trusted repositories or within sandboxed environments.
+> **Warning**: This tool uses the Claude API and will incur costs (~$4 per `--top-k` value). It runs code in git worktrees. Only use with trusted repositories or within sandboxed environments.
 
 ```bash
 pipx install git+https://github.com/sshh12/agent-pr-replay.git
