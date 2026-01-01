@@ -49,19 +49,19 @@ flowchart TB
 > **Warning**: This tool uses the Claude API and may incur costs. It runs code in git worktrees. Only use with trusted repositories or within sandboxed environments.
 
 ```bash
-pipx install git+https://github.com/anthropics/agent-pr-replay.git
+pipx install git+https://github.com/sshh12/agent-pr-replay.git
 ```
 
 Or with uv:
 ```bash
-uv tool install git+https://github.com/anthropics/agent-pr-replay.git
+uv tool install git+https://github.com/sshh12/agent-pr-replay.git
 ```
 
 <details>
 <summary>Development setup</summary>
 
 ```bash
-git clone https://github.com/anthropics/agent-pr-replay.git
+git clone https://github.com/sshh12/agent-pr-replay.git
 cd agent-pr-replay
 pip install -e ".[dev]"
 pre-commit install
