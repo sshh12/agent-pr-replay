@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agent_heatmap.pr_finder import PR, get_pr_diff
-from agent_heatmap.pr_selector import get_claude_path
+from agent_pr_replay.pr_finder import PR, get_pr_diff
+from agent_pr_replay.pr_selector import get_claude_path
 
 
 @dataclass
@@ -192,9 +192,10 @@ def get_session_path(worktree_path: Path, session_id: str) -> Path:
     Returns:
         Path to the session JSONL file
     """
-    # Claude encodes paths by replacing / with -
+    # Claude encodes paths by replacing / and _ with -
     # The leading slash becomes a leading dash which is preserved
-    encoded_path = str(worktree_path.resolve()).replace("/", "-")
+    # Underscores are also converted to dashes (tempfile.mkdtemp can include underscores)
+    encoded_path = str(worktree_path.resolve()).replace("/", "-").replace("_", "-")
 
     claude_dir = Path.home() / ".claude" / "projects" / encoded_path
     return claude_dir / f"{session_id}.jsonl"

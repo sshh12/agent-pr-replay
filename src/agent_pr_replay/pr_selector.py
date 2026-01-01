@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from agent_heatmap.pr_finder import PR
+from agent_pr_replay.pr_finder import PR
 
 
 def get_claude_path() -> str:

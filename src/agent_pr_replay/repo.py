@@ -1,4 +1,4 @@
-"""Git repository operations for agent-heatmap."""
+"""Git repository operations for agent-pr-replay."""
 
 import re
 import shutil
@@ -61,7 +61,7 @@ def get_repo(target: str, work_dir: Path | None = None) -> tuple[Repo, Path, boo
     """
     if is_url(target):
         if work_dir is None:
-            work_dir = Path(tempfile.mkdtemp(prefix="agent-heatmap-"))
+            work_dir = Path(tempfile.mkdtemp(prefix="agent-pr-replay-"))
         repo_path = work_dir / "repo"
         repo = clone_repo(target, repo_path)
         return repo, repo_path, True

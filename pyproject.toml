@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agent-heatmap"
+name = "agent-pr-replay"
 version = "0.1.0"
 description = "Analyze how AI coding agents navigate and understand codebases"
 readme = "README.md"
@@ -34,7 +34,7 @@ dev = [
 ]
 
 [project.scripts]
-agent-heatmap = "agent_heatmap.cli:main"
+agent-pr-replay = "agent_pr_replay.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -58,7 +58,7 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = []
 
 [tool.ruff.lint.isort]
-known-first-party = ["agent_heatmap"]
+known-first-party = ["agent_pr_replay"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -6,8 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from agent_heatmap.diff_comparison import DiffComparison
-from agent_heatmap.session_parser import BashExecution, SessionData, ToolCall
+from agent_pr_replay.diff_comparison import DiffComparison
+from agent_pr_replay.session_parser import BashExecution, SessionData, ToolCall
 
 
 @dataclass

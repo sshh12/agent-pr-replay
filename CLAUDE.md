@@ -16,13 +16,13 @@ pip install -e ".[dev]"
 pre-commit install
 
 # Type checking
-mypy src/agent_heatmap/
+mypy src/agent_pr_replay/
 
 # Linting
-ruff check src/agent_heatmap/
+ruff check src/agent_pr_replay/
 
 # Format code
-ruff format src/agent_heatmap/
+ruff format src/agent_pr_replay/
 
 # Run tests
 pytest
@@ -32,16 +32,16 @@ pytest
 
 ```bash
 # Run analysis on a GitHub repo
-agent-heatmap run https://github.com/owner/repo --days 30 --top-k 5
+agent-pr-replay run https://github.com/owner/repo --days 30 --top-k 5
 
 # Dry run to preview PRs
-agent-heatmap run https://github.com/owner/repo --days 7 --dry-run
+agent-pr-replay run https://github.com/owner/repo --days 7 --dry-run
 
 # View stats from previous run
-agent-heatmap stats output.json
+agent-pr-replay stats output.json
 
 # Detailed session analysis
-agent-heatmap analyze output.json
+agent-pr-replay analyze output.json
 ```
 
 ## Architecture

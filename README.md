@@ -1,153 +1,180 @@
-# Agent Heatmap
+# Agent PR Replay
 
-> **Warning**: This tool uses the Claude API and may incur non-trivial costs. It also runs unsandboxed code in git worktrees. Only use with trusted repositories or within restricted sandbox environments.
+**Discover how AI coding agents actually navigate your codebase, and where they diverge from human developers.**
 
-Analyze how AI coding agents (Claude Code) navigate and understand codebases.
+The best way to improve an agent's ability to work in a codebase is to observe its default behavior, measure the gap against real human solutions, and steer it based on evidence.
 
-This tool runs Claude Code against merged PRs from a repository and collects data about how the agent explores and modifies the codebase, generating insights like:
-- Most frequently read files
-- Common shell commands used
-- Directory access patterns (heatmap)
-- Tool usage statistics
+Agent PR Replay takes merged PRs from any repository, reverse-engineers the task prompt, runs Claude Code against it, and compares what the agent did versus what humans actually shipped. The result is targeted, empirical guidance.
 
-## Prerequisites
+## How It Works
 
-- Python 3.11+
-- [GitHub CLI](https://cli.github.com/) (`gh`) - authenticated with `gh auth login`
-- [Claude Code CLI](https://claude.ai/code) (`claude`) - installed and authenticated
+```mermaid
+flowchart TB
+    subgraph ground["① Ground Truth: Human PRs"]
+        H1["PR #1234 merged"] --> H2["Human diff:<br/>auth.py +12 -3"]
+    end
+
+    subgraph replay["② Replay"]
+        R1["Checkout base commit"] --> R2["Reverse-engineer prompt:<br/>'Fix login validation for empty passwords'"]
+    end
+
+    subgraph agent["③ Run Claude Code"]
+        A1["Claude explores codebase"] --> A2["Claude diff:<br/>auth.py +28 -3, test_auth.py +45"]
+    end
+
+    subgraph compare["④ Compare & Synthesize"]
+        C1["Human: minimal fix<br/>Claude: added tests, refactored"] --> C2["Gap: over-engineering"]
+        C2 --> C3["CLAUDE.md / AGENTS.md:<br/>'Match scope of request,<br/>don't add tests unless asked'"]
+    end
+
+    ground --> replay
+    replay --> agent
+    ground --> compare
+    agent --> compare
+```
+
+1. **Ground Truth**: Start with real merged PRs as human-validated solutions
+2. **Replay Setup**: Checkout the repo at the PR's base commit, reverse-engineer a task prompt from the diff
+3. **Run Agent**: Execute Claude Code with the prompt (same starting point, same task, different solver)
+4. **Compare**: Diff what Claude changed vs what humans shipped; identify systematic gaps
+5. **Synthesize**: Generate targeted guidance (CLAUDE.md, AGENTS.md, skills) based on observed behavioral patterns
 
 ## Installation
 
+**Prerequisites:**
+- Python 3.11+
+- [GitHub CLI](https://cli.github.com/) (`gh`), authenticated via `gh auth login`
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`), installed and authenticated
+
+> **Warning**: This tool uses the Claude API and may incur costs. It runs code in git worktrees. Only use with trusted repositories or within sandboxed environments.
+
 ```bash
-# Clone the repository
-git clone https://github.com/your-username/coding-agent-heatmap.git
-cd coding-agent-heatmap
+pipx install git+https://github.com/anthropics/agent-pr-replay.git
+```
 
-# Create virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
+Or with uv:
+```bash
+uv tool install git+https://github.com/anthropics/agent-pr-replay.git
+```
 
-# Install the package
-pip install -e .
+<details>
+<summary>Development setup</summary>
 
-# For development
+```bash
+git clone https://github.com/anthropics/agent-pr-replay.git
+cd agent-pr-replay
 pip install -e ".[dev]"
 pre-commit install
 ```
+
+</details>
 
 ## Usage
 
 ### Run Analysis
 
-Analyze merged PRs from a GitHub repository:
-
 ```bash
 # Analyze a GitHub repo (clones to temp directory)
-agent-heatmap run https://github.com/pallets/click --days 30 --top-k 5
+agent-pr-replay run https://github.com/pallets/click --days 30 --top-k 5
 
 # Analyze a local repo
-agent-heatmap run ./my-local-repo --days 7 --top-k 3
+agent-pr-replay run ./my-local-repo --days 7 --top-k 3
 
-# With custom selection instructions
-agent-heatmap run https://github.com/django/django --days 30 --top-k 5 \
+# Focus on specific types of changes
+agent-pr-replay run https://github.com/django/django --days 30 --top-k 5 \
   --instructions "Focus on authentication-related changes"
 
-# Dry run to see available PRs without running the agent
-agent-heatmap run https://github.com/pallets/click --days 7 --dry-run
+# Preview available PRs without running analysis
+agent-pr-replay run https://github.com/pallets/click --days 7 --dry-run
 ```
 
 ### View Statistics
 
-View statistics from a previous run:
+```bash
+agent-pr-replay stats output.json
+```
+
+### Generate Report
+
+Synthesize findings into a structured report with guidance and skills:
 
 ```bash
-agent-heatmap stats output.json
+agent-pr-replay analyze output.json
 ```
 
-### Detailed Analysis
+## Output
 
-View detailed analysis of each session:
+The primary output is targeted guidance based on observed behavioral gaps:
 
-```bash
-agent-heatmap analyze output.json
+- **CLAUDE.md** / **AGENTS.md**: Steering rules for Claude Code or any AI coding agent
+- **skills.md**: Reusable agent skills with structured YAML frontmatter
+
+Example from analyzing pytorch/pytorch (10 sessions):
+
+```markdown
+## Prefer Deletion Over Defensive Programming
+
+- When fixing bugs in cleanup/teardown code, consider whether the cleanup is necessary at all before adding defensive logic
+- Never replace buggy cleanup with commented-out stubs (`pass` statements); prefer complete removal if the cleanup serves no purpose
+- Before adding try-finally blocks or defensive reference handling, verify the code path is actually executed and necessary
+
+## Minimal Changes to Existing Code
+
+- When fixing boolean conditions: prefer extending the existing condition with OR/AND clauses over restructuring the entire conditional block
+- Never introduce intermediate variables for conditions when a direct boolean expression suffices; this increases diff size unnecessarily
+- Preserve existing code structure: if the body of a conditional doesn't need changes, don't nest it further or move it
+
+## PyTorch Dynamo Integration Patterns
+
+- When adding new runtime state functions (like `_is_in_optimized_module()`), register them in dynamo's tracing infrastructure: add to `torch/_dynamo/trace_rules.py` MANUAL_FUNCTIONS dict, and to `torch/_dynamo/variables/torch.py` in both `tracing_state_functions()` and `handle_tracing_state_functions()`
+- Never add state-checking functions without trace registration; prefer checking all three integration points
 ```
 
-## How It Works
+These are corrections discovered by comparing Claude's output to merged human PRs. The report also includes suggested agent skills with structured YAML frontmatter.
 
-1. **Find PRs**: Uses `gh` CLI to find merged PRs in the specified time range
-2. **Select PRs**: Uses Claude to select diverse, non-trivial PRs for analysis
-3. **Generate Prompts**: For each PR, reverse-engineers a human-like prompt from the diff
-4. **Run Agent**: Spawns Claude Code in a worktree at the PR's base commit
-5. **Parse Sessions**: Extracts tool calls, file reads, and commands from session history
-6. **Generate Stats**: Computes statistics like file heatmaps and command frequency
+<details>
+<summary><strong>CLI Reference</strong></summary>
 
-## Output Format
+### `agent-pr-replay run <target>`
 
-The output JSON contains:
-
-```json
-{
-  "repo_url": "https://github.com/owner/repo",
-  "repo_owner": "owner",
-  "repo_name": "repo",
-  "timestamp": "2025-12-31T...",
-  "sessions": [
-    {
-      "pr_number": 123,
-      "pr_title": "Fix authentication bug",
-      "human_prompt": "Fix the login validation...",
-      "session_id": "uuid",
-      "session_data": {
-        "files_read": ["src/auth.py", ...],
-        "files_edited": ["tests/test_auth.py", ...],
-        "bash_commands": ["find . -name '*.py'", ...]
-      }
-    }
-  ]
-}
-```
-
-## CLI Options
-
-### `agent-heatmap run`
+Run analysis on a GitHub repository or local git repo.
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| `<target>` | (required) | GitHub URL (`https://github.com/owner/repo`) or local path |
 | `--days` | 30 | Number of days to look back for merged PRs |
 | `--top-k` | 5 | Number of representative PRs to analyze |
 | `-o, --output` | output.json | Output file for results |
-| `--instructions` | - | Custom instructions for PR selection |
-| `--dry-run` | - | Show PRs without running analysis |
+| `--instructions` | - | Custom instructions for PR selection (e.g., "Focus on auth changes") |
+| `--model` | sonnet | Model to use for agent and LLM calls |
+| `--dry-run` | - | Preview PRs without running analysis |
 
-### `agent-heatmap stats`
+### `agent-pr-replay stats <input_file>`
 
-Shows statistics including:
-- Tool usage breakdown
-- Top commands/patterns
-- Most read files
-- Most edited files
-- Directory heatmap
+Display aggregated statistics from a previous run.
 
-### `agent-heatmap analyze`
+| Option | Default | Description |
+|--------|---------|-------------|
+| `<input_file>` | (required) | JSON output from a previous `run` command |
 
-Shows detailed analysis of each session including prompts, tool calls, and file operations.
+Outputs:
+- Tool usage breakdown (Read, Glob, Grep, Edit, Bash, etc.)
+- Most frequently read/edited files
+- Directory access heatmap
+- Bash command patterns
 
-## Development
+### `agent-pr-replay analyze <input_file>`
 
-```bash
-# Run type checking
-mypy src/agent_heatmap/
+Generate an LLM-synthesized report from analysis data.
 
-# Run linting
-ruff check src/agent_heatmap/
+| Option | Default | Description |
+|--------|---------|-------------|
+| `<input_file>` | (required) | JSON output from a previous `run` command |
+| `-o, --output` | `<input_file>-report.md` | Output path for the markdown report |
 
-# Format code
-ruff format src/agent_heatmap/
+Generates:
+- Deduplicated guidance (CLAUDE.md / AGENTS.md) organized by theme
+- Key insights with citations to specific PRs
+- Suggested agent skills with structured YAML frontmatter
 
-# Run tests
-pytest
-```
-
-## License
-
-MIT
+</details>

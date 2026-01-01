@@ -1,4 +1,4 @@
-"""CLI entrypoint for agent-heatmap."""
+"""CLI entrypoint for agent-pr-replay."""
 
 import sys
 import tempfile
@@ -15,20 +15,21 @@ from rich.table import Table
 if TYPE_CHECKING:
     from git import Repo
 
-from agent_heatmap.agent_runner import (
+from agent_pr_replay.agent_runner import (
     generate_human_prompt,
     get_session_path,
     run_agent_on_pr,
 )
-from agent_heatmap.database import AnalysisSession, Database
-from agent_heatmap.diff_comparison import (
+from agent_pr_replay.analyzer import extract_analysis_data, generate_report
+from agent_pr_replay.database import AnalysisSession, Database
+from agent_pr_replay.diff_comparison import (
     analyze_with_llm,
     capture_worktree_changes,
     compare_diffs,
 )
-from agent_heatmap.pr_finder import PR, check_gh_cli, find_merged_prs, get_pr_diff
-from agent_heatmap.pr_selector import check_claude_cli, select_representative_prs
-from agent_heatmap.repo import (
+from agent_pr_replay.pr_finder import PR, check_gh_cli, find_merged_prs, get_pr_diff
+from agent_pr_replay.pr_selector import check_claude_cli, select_representative_prs
+from agent_pr_replay.repo import (
     cleanup_repo,
     cleanup_worktree,
     create_worktree,
@@ -36,14 +37,14 @@ from agent_heatmap.repo import (
     get_repo,
     is_url,
 )
-from agent_heatmap.session_parser import parse_session
-from agent_heatmap.stats import compute_stats, print_stats, stats_to_dict
+from agent_pr_replay.session_parser import parse_session
+from agent_pr_replay.stats import compute_stats, format_stats_text, print_stats
 
 console = Console()
 
 
 @click.group()
-@click.version_option(package_name="agent-heatmap")
+@click.version_option(package_name="agent-pr-replay")
 def main() -> None:
     """Analyze how AI coding agents navigate and understand codebases.
 
@@ -104,13 +105,13 @@ def run(
 
     Examples:
 
-        agent-heatmap run https://github.com/django/django --days 30 --top-k 5
+        agent-pr-replay run https://github.com/django/django --days 30 --top-k 5
 
-        agent-heatmap run ./my-local-repo --days 7 --top-k 3
+        agent-pr-replay run ./my-local-repo --days 7 --top-k 3
 
-        agent-heatmap run https://github.com/django/django --instructions "Focus on auth"
+        agent-pr-replay run https://github.com/django/django --instructions "Focus on auth"
     """
-    console.print(Panel.fit("[bold blue]Agent Heatmap[/bold blue]"))
+    console.print(Panel.fit("[bold blue]Agent PR Replay[/bold blue]"))
     console.print()
 
     # Check prerequisites
@@ -225,7 +226,7 @@ def run(
         sys.exit(1)
 
     # Create temp directory for worktrees
-    worktree_base = Path(tempfile.mkdtemp(prefix="agent-heatmap-worktrees-"))
+    worktree_base = Path(tempfile.mkdtemp(prefix="agent-pr-replay-worktrees-"))
 
     try:
         # Process each selected PR
@@ -383,123 +384,66 @@ def display_prs(prs: list[PR]) -> None:
 
 @main.command()
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
-@click.option(
-    "--json",
-    "output_json",
-    type=click.Path(path_type=Path),
-    help="Export stats to JSON file.",
-)
-def stats(input_file: Path, output_json: Path | None) -> None:
+def stats(input_file: Path) -> None:
     """Show statistics from a previous analysis run.
 
-    INPUT_FILE is the JSON output from a previous 'agent-heatmap run' command.
+    INPUT_FILE is the JSON output from a previous 'agent-pr-replay run' command.
+    Output can be piped to a file.
 
     Example:
 
-        agent-heatmap stats output.json
-
-        agent-heatmap stats output.json --json stats.json
+        agent-pr-replay stats output.json > stats.txt
     """
-    import json
-
     try:
         db = Database.load(input_file)
     except Exception as e:
-        console.print(f"[red]Error loading database:[/red] {e}")
+        print(f"Error loading database: {e}", file=sys.stderr)
         sys.exit(1)
 
     stats_data = compute_stats(db)
-    print_stats(stats_data, console)
-
-    if output_json:
-        with open(output_json, "w") as f:
-            json.dump(stats_to_dict(stats_data), f, indent=2)
-        console.print()
-        console.print(f"[green]Stats exported to:[/green] {output_json}")
+    print(format_stats_text(stats_data))
 
 
 @main.command()
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
-def analyze(input_file: Path) -> None:
-    """Analyze session data from a previous run.
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(path_type=Path),
+    help="Output path for the markdown report.",
+)
+def analyze(input_file: Path, output: Path | None) -> None:
+    """Generate an LLM-synthesized report from analysis data.
 
-    INPUT_FILE is the JSON output from a previous 'agent-heatmap run' command.
+    Uses Claude to analyze all session data and produce a comprehensive
+    CLAUDE.md recommendation with impact assessment.
 
     Example:
 
-        agent-heatmap analyze output.json
+        agent-pr-replay analyze output.json -o report.md
     """
     try:
         db = Database.load(input_file)
     except Exception as e:
-        console.print(f"[red]Error loading database:[/red] {e}")
+        print(f"Error loading database: {e}", file=sys.stderr)
         sys.exit(1)
 
-    console.print(Panel.fit("[bold blue]Agent Heatmap Analysis[/bold blue]"))
-    console.print()
+    print(f"Analyzing {db.repo_owner}/{db.repo_name}...")
 
-    summary = db.summary()
-    console.print(f"[bold]Repository:[/bold] {summary['repo']}")
-    console.print(f"[bold]Analyzed:[/bold] {summary['timestamp']}")
-    console.print()
-    console.print(f"Sessions: {summary['successful_sessions']}/{summary['total_sessions']}")
-    console.print(f"Total Tool Calls: {summary['total_tool_calls']}")
-    console.print(f"Files Read: {summary['total_files_read']}")
-    console.print(f"Files Edited: {summary['total_files_edited']}")
-    console.print(f"Bash Commands: {summary['total_bash_commands']}")
-    console.print()
+    # Extract data summary
+    analysis_data = extract_analysis_data(db)
+    print(f"Extracted {len(analysis_data['sessions'])} sessions for analysis")
 
-    # Show details for each session
-    for session in db.sessions:
-        console.print(f"[bold cyan]PR #{session.pr_number}:[/bold cyan] {session.pr_title}")
-        console.print(f"  Prompt: {session.human_prompt[:100]}...")
-        if session.session_data:
-            sd = session.session_data
-            console.print(f"  Tool Calls: {len(sd.tool_calls)}")
-            console.print(f"  Files Read: {len(sd.files_read)}")
-            console.print(f"  Files Edited: {len(sd.files_edited)}")
+    # Generate report
+    print("Running Claude to synthesize report...")
+    output_path = output or Path(str(input_file.with_suffix("")) + "-report.md")
 
-        # Display diff comparison if available
-        if session.diff_comparison:
-            dc = session.diff_comparison
-            console.print()
-            console.print("  [bold]Diff Comparison:[/bold]")
-            console.print(
-                f"    Actual PR:  +{dc.actual_total_additions}/-{dc.actual_total_deletions} "
-                f"({len(dc.actual_files)} files)"
-            )
-            console.print(
-                f"    Claude:     +{dc.claude_total_additions}/-{dc.claude_total_deletions} "
-                f"({len(dc.claude_files)} files)"
-            )
-
-            if dc.files_only_in_actual:
-                console.print(
-                    f"    [yellow]Files only in actual PR:[/yellow] {dc.files_only_in_actual}"
-                )
-            if dc.files_only_in_claude:
-                console.print(
-                    f"    [yellow]Files only in Claude:[/yellow] {dc.files_only_in_claude}"
-                )
-            if dc.files_in_both:
-                console.print(f"    [green]Files in both:[/green] {dc.files_in_both}")
-
-            if dc.analysis_description:
-                console.print()
-                console.print("  [bold]LLM Analysis:[/bold]")
-                # Indent the analysis
-                for line in dc.analysis_description.split("\n"):
-                    console.print(f"    {line}")
-
-            if dc.suggested_claude_md:
-                console.print()
-                console.print("  [bold]Suggested CLAUDE.md Additions:[/bold]")
-                for line in dc.suggested_claude_md.split("\n"):
-                    console.print(f"    {line}")
-
-        if not session.success:
-            console.print(f"  [red]Error: {session.error}[/red]")
-        console.print()
+    try:
+        generate_report(db, output_path)
+        print(f"Report saved to: {output_path}")
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

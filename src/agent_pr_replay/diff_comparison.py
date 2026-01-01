@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from agent_heatmap.pr_selector import get_claude_path
+from agent_pr_replay.pr_selector import get_claude_path
 
 logger = logging.getLogger(__name__)
 
