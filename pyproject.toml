@@ -28,7 +28,6 @@ dependencies = [
 dev = [
     "mypy",
     "pre-commit",
-    "pytest",
     "ruff",
     "types-setuptools",
 ]
@@ -60,6 +59,3 @@ ignore = []
 [tool.ruff.lint.isort]
 known-first-party = ["agent_pr_replay"]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]

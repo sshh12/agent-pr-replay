@@ -23,9 +23,6 @@ ruff check src/agent_pr_replay/
 
 # Format code
 ruff format src/agent_pr_replay/
-
-# Run tests
-pytest
 ```
 
 ## CLI Usage

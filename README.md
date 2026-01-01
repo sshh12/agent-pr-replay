@@ -6,6 +6,8 @@ The best way to improve an agent's ability to work in a codebase is to observe i
 
 Agent PR Replay takes merged PRs from any repository, reverse-engineers the task prompt, runs Claude Code against it, and compares what the agent did versus what humans actually shipped. The result is targeted, empirical guidance.
 
+**[See example reports →](examples/)**
+
 ## How It Works
 
 ```mermaid
