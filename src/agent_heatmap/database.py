@@ -6,7 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from agent_heatmap.session_parser import SessionData, ToolCall
+from agent_heatmap.diff_comparison import DiffComparison
+from agent_heatmap.session_parser import BashExecution, SessionData, ToolCall
 
 
 @dataclass
@@ -19,6 +20,7 @@ class AnalysisSession:
     human_prompt: str
     session_id: str
     session_data: SessionData | None = None
+    diff_comparison: DiffComparison | None = None
     success: bool = True
     error: str | None = None
 
@@ -31,6 +33,7 @@ class AnalysisSession:
             "human_prompt": self.human_prompt,
             "session_id": self.session_id,
             "session_data": self.session_data.to_dict() if self.session_data else None,
+            "diff_comparison": self.diff_comparison.to_dict() if self.diff_comparison else None,
             "success": self.success,
             "error": self.error,
         }
@@ -50,6 +53,18 @@ class AnalysisSession:
                         input=tc_data.get("input", {}),
                         timestamp=tc_data.get("timestamp", ""),
                         tool_use_id=tc_data.get("tool_use_id", ""),
+                        output=tc_data.get("output"),
+                        is_error=tc_data.get("is_error", False),
+                    )
+                )
+            # Reconstruct bash outputs from saved data
+            bash_outputs = []
+            for bo_data in sd.get("bash_outputs", []):
+                bash_outputs.append(
+                    BashExecution(
+                        command=bo_data.get("command", ""),
+                        output=bo_data.get("output", ""),
+                        is_error=bo_data.get("is_error", False),
                     )
                 )
             session_data = SessionData(
@@ -58,8 +73,15 @@ class AnalysisSession:
                 files_read=sd.get("files_read", []),
                 files_edited=sd.get("files_edited", []),
                 bash_commands=sd.get("bash_commands", []),
+                bash_outputs=bash_outputs,
                 total_messages=sd.get("total_messages", 0),
+                claude_diff_raw=sd.get("claude_diff_raw"),
             )
+
+        # Reconstruct diff comparison if present
+        diff_comparison = None
+        if data.get("diff_comparison"):
+            diff_comparison = DiffComparison.from_dict(data["diff_comparison"])
 
         return cls(
             pr_number=data["pr_number"],
@@ -68,6 +90,7 @@ class AnalysisSession:
             human_prompt=data["human_prompt"],
             session_id=data["session_id"],
             session_data=session_data,
+            diff_comparison=diff_comparison,
             success=data.get("success", True),
             error=data.get("error"),
         )

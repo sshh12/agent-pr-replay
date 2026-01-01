@@ -1,5 +1,7 @@
 # Agent Heatmap
 
+> **Warning**: This tool uses the Claude API and may incur non-trivial costs. It also runs unsandboxed code in git worktrees. Only use with trusted repositories or within restricted sandbox environments.
+
 Analyze how AI coding agents (Claude Code) navigate and understand codebases.
 
 This tool runs Claude Code against merged PRs from a repository and collects data about how the agent explores and modifies the codebase, generating insights like:

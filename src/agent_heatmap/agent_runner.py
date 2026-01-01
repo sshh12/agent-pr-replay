@@ -50,7 +50,8 @@ def generate_human_prompt(owner: str, repo: str, pr: PR) -> str:
         diff = f"(Could not retrieve diff: {e})"
 
     # Truncate diff if too long
-    max_diff_len = 10000
+    # ~200k token context window at ~3 chars/token = 600k chars
+    max_diff_len = 100000
     if len(diff) > max_diff_len:
         diff = diff[:max_diff_len] + "\n\n... (diff truncated)"
 
@@ -93,6 +94,7 @@ def run_agent_on_pr(
     worktree_path: Path,
     human_prompt: str,
     session_id: str | None = None,
+    model: str | None = None,
 ) -> tuple[str, str]:
     """Run Claude agent on a worktree with the given prompt.
 
@@ -100,6 +102,7 @@ def run_agent_on_pr(
         worktree_path: Path to the worktree
         human_prompt: The prompt to give to Claude
         session_id: Optional session ID (generated if not provided)
+        model: Optional model name override (defaults to "sonnet")
 
     Returns:
         Tuple of (session_id, result_text)
@@ -120,7 +123,6 @@ def run_agent_on_pr(
             # Task management
             "TodoWrite",
             "Task",
-            "AskUserQuestion",
             # Safe bash commands
             "Bash(find:*)",
             "Bash(ls:*)",
@@ -154,7 +156,7 @@ def run_agent_on_pr(
         claude_path,
         "-p",
         "--model",
-        "sonnet",
+        model or "sonnet",
         "--session-id",
         session_id,
         "--allowedTools",

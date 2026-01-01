@@ -21,7 +21,12 @@ from agent_heatmap.agent_runner import (
     run_agent_on_pr,
 )
 from agent_heatmap.database import AnalysisSession, Database
-from agent_heatmap.pr_finder import PR, check_gh_cli, find_merged_prs
+from agent_heatmap.diff_comparison import (
+    analyze_with_llm,
+    capture_worktree_changes,
+    compare_diffs,
+)
+from agent_heatmap.pr_finder import PR, check_gh_cli, find_merged_prs, get_pr_diff
 from agent_heatmap.pr_selector import check_claude_cli, select_representative_prs
 from agent_heatmap.repo import (
     cleanup_repo,
@@ -79,6 +84,10 @@ def main() -> None:
     is_flag=True,
     help="Show what would be done without running the agent.",
 )
+@click.option(
+    "--model",
+    help="Model name to use for the agent (default: sonnet).",
+)
 def run(
     target: str,
     days: int,
@@ -86,6 +95,7 @@ def run(
     output: Path,
     instructions: str | None,
     dry_run: bool,
+    model: str | None,
 ) -> None:
     """Run analysis on a repository.
 
@@ -239,6 +249,7 @@ def run(
                         worktree_base=worktree_base,
                         progress=progress,
                         task_id=task,
+                        model=model,
                     )
                     db.add_session(session)
 
@@ -287,6 +298,7 @@ def process_pr(
     worktree_base: Path,
     progress: Progress,
     task_id: TaskID,
+    model: str | None = None,
 ) -> AnalysisSession:
     """Process a single PR through the analysis pipeline."""
     # Generate human prompt from PR diff
@@ -302,12 +314,30 @@ def process_pr(
         # Run agent on worktree
         progress.update(task_id, description=f"PR #{pr.number}: Running agent...")
         session_id = str(uuid.uuid4())
-        session_id, result = run_agent_on_pr(worktree_path, human_prompt, session_id)
+        session_id, result = run_agent_on_pr(worktree_path, human_prompt, session_id, model)
+
+        # Capture Claude's diff BEFORE cleanup
+        progress.update(task_id, description=f"PR #{pr.number}: Capturing diff...")
+        claude_diff_raw = capture_worktree_changes(worktree_path)
 
         # Parse session data
         progress.update(task_id, description=f"PR #{pr.number}: Parsing session...")
         session_path = get_session_path(worktree_path, session_id)
         session_data = parse_session(session_path)
+        session_data.claude_diff_raw = claude_diff_raw
+
+        # Build diff comparison
+        progress.update(task_id, description=f"PR #{pr.number}: Comparing diffs...")
+        actual_diff_raw = get_pr_diff(owner, repo_name, pr.number)
+        diff_comparison = compare_diffs(actual_diff_raw, claude_diff_raw)
+
+        # LLM analysis
+        progress.update(task_id, description=f"PR #{pr.number}: Analyzing diff...")
+        analysis, suggestions = analyze_with_llm(
+            diff_comparison, pr.title, human_prompt, model or "sonnet"
+        )
+        diff_comparison.analysis_description = analysis
+        diff_comparison.suggested_claude_md = suggestions
 
         return AnalysisSession(
             pr_number=pr.number,
@@ -316,6 +346,7 @@ def process_pr(
             human_prompt=human_prompt,
             session_id=session_id,
             session_data=session_data,
+            diff_comparison=diff_comparison,
             success=True,
         )
 
@@ -427,6 +458,45 @@ def analyze(input_file: Path) -> None:
             console.print(f"  Tool Calls: {len(sd.tool_calls)}")
             console.print(f"  Files Read: {len(sd.files_read)}")
             console.print(f"  Files Edited: {len(sd.files_edited)}")
+
+        # Display diff comparison if available
+        if session.diff_comparison:
+            dc = session.diff_comparison
+            console.print()
+            console.print("  [bold]Diff Comparison:[/bold]")
+            console.print(
+                f"    Actual PR:  +{dc.actual_total_additions}/-{dc.actual_total_deletions} "
+                f"({len(dc.actual_files)} files)"
+            )
+            console.print(
+                f"    Claude:     +{dc.claude_total_additions}/-{dc.claude_total_deletions} "
+                f"({len(dc.claude_files)} files)"
+            )
+
+            if dc.files_only_in_actual:
+                console.print(
+                    f"    [yellow]Files only in actual PR:[/yellow] {dc.files_only_in_actual}"
+                )
+            if dc.files_only_in_claude:
+                console.print(
+                    f"    [yellow]Files only in Claude:[/yellow] {dc.files_only_in_claude}"
+                )
+            if dc.files_in_both:
+                console.print(f"    [green]Files in both:[/green] {dc.files_in_both}")
+
+            if dc.analysis_description:
+                console.print()
+                console.print("  [bold]LLM Analysis:[/bold]")
+                # Indent the analysis
+                for line in dc.analysis_description.split("\n"):
+                    console.print(f"    {line}")
+
+            if dc.suggested_claude_md:
+                console.print()
+                console.print("  [bold]Suggested CLAUDE.md Additions:[/bold]")
+                for line in dc.suggested_claude_md.split("\n"):
+                    console.print(f"    {line}")
+
         if not session.success:
             console.print(f"  [red]Error: {session.error}[/red]")
         console.print()
